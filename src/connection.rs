@@ -87,6 +87,86 @@ impl Connection {
     pub fn as_raw(&self) -> *mut ffi::sqlite3 {
         self.raw.0
     }
+
+    #[inline]
+    pub fn execute_with<T: AsRef<str>>(
+        &self,
+        statement: T,
+        fields: std::slice::Iter<'_, crate::Value>,
+    ) -> Result<()> {
+        let mut cursor = self.prepare(statement)?;
+
+        let mut idx = 1;
+        for val in fields {
+            cursor.bind((idx, val))?;
+            idx += 1;
+        }
+
+        cursor.next()?;
+        Ok(())
+    }
+
+    #[inline]
+    pub fn execute_many<T: AsRef<str>>(
+        &self,
+        statement: T,
+        rows: &Vec<Vec<crate::Value>>,
+    ) -> Result<()> {
+        let mut cursor = self.prepare(statement)?;
+
+        for fields in rows.iter() {
+            cursor.reset()?;
+            let mut idx = 1;
+            for val in fields {
+                cursor.bind((idx, val))?;
+                idx += 1;
+            }
+            cursor.next()?;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub fn has_table(&self, tbl_name: &str) -> Result<bool> {
+        let statement = format!(
+            "SELECT COUNT(*) from sqlite_master where tbl_name = '{}'",
+            tbl_name
+        );
+        let mut cursor = self.prepare(&statement)?;
+        cursor.next()?;
+        let count = cursor.read::<i64, _>(0)?;
+        Ok(count > 0)
+    }
+
+    #[inline]
+    pub fn has_column(&self, tbl_name: &str, column_name: &str) -> Result<bool> {
+        let statement = format!(
+            "SELECT COUNT(*) FROM PRAGMA_TABLE_INFO('{}') WHERE NAME='{}'",
+            tbl_name, column_name
+        );
+        let mut cursor = self.prepare(&statement)?;
+        cursor.next()?;
+        let count = cursor.read::<i64, _>(0)?;
+        Ok(count > 0)
+    }
+
+    #[inline]
+    pub fn has_value(
+        &self,
+        tbl_name: &str,
+        column_name: &str,
+        value: &crate::Value,
+    ) -> Result<bool> {
+        let statement = format!(
+            "SELECT COUNT(*) FROM \"{}\" WHERE \"{}\" = ?",
+            tbl_name, column_name
+        );
+        let mut cursor = self.prepare(&statement)?;
+        cursor.bind((1, value))?;
+        cursor.next()?;
+        let count = cursor.read::<i64, _>(0)?;
+        Ok(count > 0)
+    }
 }
 
 impl Connection {
