@@ -249,6 +249,48 @@ impl Connection {
         }
         Ok(())
     }
+
+    /// Serializes the SQLite database to an in-memory buffer.
+    /// This function allows you to serialize an SQLite database to an in-memory buffer.
+    /// The output is the same bytes as if the database were to be written to disk.
+    #[cfg(feature = "serialize")]
+    #[inline]
+    pub async fn serialize_to_buffer(&mut self) -> Result<Vec<u8>> {
+        let mut res = Vec::new();
+        unsafe {
+            let mut size: ffi::sqlite3_int64 = 0;
+            let data_ptr =
+                ffi::sqlite3_serialize(self.raw.0, std::ptr::null(), &mut size as *mut _, 0);
+
+            if data_ptr == std::ptr::null_mut() {
+                raise!("Could not create database buffer!");
+            }
+
+            for _ in 0..size {
+                res.push(data_ptr.read() as u8)
+            }
+        }
+        Ok(res)
+    }
+
+    #[cfg(feature = "serialize")]
+    #[inline]
+    pub fn deserialize_to_readonly_db(&self, data: &[u8]) -> Result<()> {
+        unsafe {
+            ok!(
+                self.raw.0,
+                ffi::sqlite3_deserialize(
+                    self.raw.0,
+                    std::ptr::null(),
+                    data.as_ptr() as *mut u8,
+                    data.len() as i64,
+                    data.len() as i64,
+                    ffi::SQLITE_DESERIALIZE_READONLY as u32
+                )
+            );
+        }
+        Ok(())
+    }
 }
 
 impl Connection {
